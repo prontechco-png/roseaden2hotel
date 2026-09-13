@@ -159,7 +159,7 @@
 
         // استخراج عنوان صفحة الراوتر الممرر عبر tthh
         const urlParams = new URLSearchParams(window.location.search);
-        const routerOrigin = urlParams.get('tthh') || "http://10.0.0.1";
+        const routerOrigin = urlParams.get('tthh') || "http://10.10.0.1";
         
         // تحديث زر العودة
         document.getElementById("backBtn").href = routerOrigin;
