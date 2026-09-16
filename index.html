@@ -188,9 +188,9 @@
 
         // استخراج عنوان الراوتر الحقيقي الممرر عبر tthh (r.com - الافتراضي لشبكة روز عدن -10.10.0.1)
         const urlParams = new URLSearchParams(window.location.search);
-        let routerOrigin = urlParams.get('tthh') || "http://r.com";
+        let routerOrigin = urlParams.get('tthh') || "http://10.10.0.1";
         if (routerOrigin.startsWith("file")) {
-            routerOrigin = "http://r.com";
+            routerOrigin = "http://10.10.0.1";
         }
         document.getElementById("backBtn").href = routerOrigin;
 
