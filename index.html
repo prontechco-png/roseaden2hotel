@@ -492,7 +492,7 @@
                     <span>ألبوم الصور / لقطة شاشة</span>
                 </button>
 
-                <button type="button" class="btn-photo-action btn-snap" id="btnSnapPhoto" title="التقاط صورة للكرت بكاميرا الهاتف">
+                <button type="button" class="btn-photo-action btn-snap" id="btnSnapPhoto" title="التقاط صورة فورية للكرت بكاميرا الهاتف">
                     <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
                         <circle cx="12" cy="13" r="4"></circle>
@@ -639,83 +639,114 @@
             if (!raw) return null;
             let text = raw.trim();
 
-            // 1. فحص كروت روز عدن 2 المسبوقة بوسم RAH#
+            // 1. فحص الروابط المباشرة (مثل http://10.2.0.1/login?... أو http://r.com/login?...)
+            if (/^https?:\/\//i.test(text)) {
+                try {
+                    let u = new URL(text);
+                    let usr = u.searchParams.get("username") || u.searchParams.get("user") || u.searchParams.get("u");
+                    let pwd = u.searchParams.get("password") || u.searchParams.get("pass") || u.searchParams.get("p");
+                    
+                    if (usr && (pwd === null || pwd === undefined)) {
+                        pwd = usr;
+                    }
+
+                    return {
+                        isDirectUrl: true,
+                        directUrl: text,
+                        username: usr || "Guest",
+                        password: pwd || ""
+                    };
+                } catch(e) {}
+            }
+
+            // 2. فحص كروت روز عدن المسبوقة بوسم RAH#
             if (text.startsWith("RAH#")) {
                 let encPart = text.substring(4);
-                let dec = rc4Decrypt(encPart, RAH_SECRET_KEY);
+                let dec = null;
+                for (let key of SECRET_KEYS_LIST) {
+                    dec = rc4Decrypt(encPart, key);
+                    if (dec) break;
+                }
                 if (dec) {
                     if (dec.includes(":")) {
                         let p = dec.split(":");
-                        return { username: p[0].trim(), password: p[1].trim() };
+                        return { isDirectUrl: false, username: p[0].trim(), password: p[1].trim() };
                     }
                     if (dec.includes(",")) {
                         let p = dec.split(",");
-                        return { username: p[0].trim(), password: p[1].trim() };
+                        return { isDirectUrl: false, username: p[0].trim(), password: p[1].trim() };
                     }
-                    return { username: dec.trim(), password: dec.trim() };
+                    return { isDirectUrl: false, username: dec.trim(), password: dec.trim() };
                 }
             }
 
-            // 2. فحص الروابط المشفرة أو الروابط المباشرة التي تحتوي على معلمات
+            // 3. فحص الروابط التي تحتوي على معلمات دون بروتوكول صريح
             if (text.includes("://") || text.includes("?")) {
                 try {
                     let parseTarget = text;
                     if (!text.includes("://")) parseTarget = "http://" + text;
                     let u = new URL(parseTarget);
                     let usr = u.searchParams.get("username") || u.searchParams.get("user") || u.searchParams.get("u");
-                    let pwd = u.searchParams.get("password") || u.searchParams.get("pass") || u.searchParams.get("p") || "";
-                    if (usr) return { username: usr, password: pwd };
+                    let pwd = u.searchParams.get("password") || u.searchParams.get("pass") || u.searchParams.get("p");
+                    if (usr) {
+                        return {
+                            isDirectUrl: true,
+                            directUrl: parseTarget,
+                            username: usr,
+                            password: (pwd !== null && pwd !== undefined) ? pwd : usr
+                        };
+                    }
                 } catch(e) {}
             }
 
-            // 3. تجربة فك التشفير عبر RC4 بالمفاتيح المعتمدة
+            // 4. تجربة فك التشفير عبر RC4 بالمفاتيح المعتمدة
             for (let key of SECRET_KEYS_LIST) {
                 let decRc4 = rc4Decrypt(text, key);
                 if (decRc4 && decRc4.length >= 3) {
                     if (decRc4.includes(":")) {
                         let p = decRc4.split(":");
-                        return { username: p[0].trim(), password: p[1].trim() };
+                        return { isDirectUrl: false, username: p[0].trim(), password: p[1].trim() };
                     }
                     if (decRc4.includes(",")) {
                         let p = decRc4.split(",");
-                        return { username: p[0].trim(), password: p[1].trim() };
+                        return { isDirectUrl: false, username: p[0].trim(), password: p[1].trim() };
                     }
                     if (/^[a-zA-Z0-9_-]+$/.test(decRc4)) {
-                        return { username: decRc4, password: decRc4 };
+                        return { isDirectUrl: false, username: decRc4, password: decRc4 };
                     }
                 }
             }
 
-            // 4. تجربة فك التشفير عبر XOR بالمفاتيح السابقة
+            // 5. تجربة فك التشفير عبر XOR بالمفاتيح السابقة
             for (let key of SECRET_KEYS_LIST) {
                 let decrypted = xorDecrypt(text, key);
                 if (decrypted && decrypted.length >= 3) {
                     if (decrypted.includes(":")) {
                         let parts = decrypted.split(":");
-                        return { username: parts[0].trim(), password: parts[1].trim() };
+                        return { isDirectUrl: false, username: parts[0].trim(), password: parts[1].trim() };
                     }
                     if (decrypted.includes(",")) {
                         let parts = decrypted.split(",");
-                        return { username: parts[0].trim(), password: parts[1].trim() };
+                        return { isDirectUrl: false, username: parts[0].trim(), password: parts[1].trim() };
                     }
                     if (/^[a-zA-Z0-9_-]+$/.test(decrypted)) {
-                        return { username: decrypted, password: decrypted };
+                        return { isDirectUrl: false, username: decrypted, password: decrypted };
                     }
                 }
             }
 
-            // 5. فحص الصيغ النصية الصريحة (user:pass أو user,pass)
+            // 6. فحص الصيغ النصية الصريحة (user:pass أو user,pass)
             if (text.includes(":")) {
                 let parts = text.split(":");
-                return { username: parts[0].trim(), password: parts[1].trim() };
+                return { isDirectUrl: false, username: parts[0].trim(), password: parts[1].trim() };
             }
             if (text.includes(",")) {
                 let parts = text.split(",");
-                return { username: parts[0].trim(), password: parts[1].trim() };
+                return { isDirectUrl: false, username: parts[0].trim(), password: parts[1].trim() };
             }
 
-            // 6. كرت برقم واحد فقط (اسم المستخدم وكلمة السر متطابقان)
-            return { username: text, password: text };
+            // 7. كرت برقم واحد فقط
+            return { isDirectUrl: false, username: text, password: text };
         }
 
         // نغمة نجاح القراءة الصوتية
@@ -742,7 +773,7 @@
             isRedirecting = true;
 
             const statusEl = document.getElementById("statusText");
-            statusEl.innerHTML = "<b style='color:#34d399;'>✅ تم التعرف على الكود بنجاح! جاري فك التشفير والاتصال...</b>";
+            statusEl.innerHTML = "<b style='color:#34d399;'>✅ تم التعرف على الكود بنجاح! جاري الاتصال...</b>";
 
             playSuccessBeep();
             if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
@@ -754,7 +785,14 @@
                 return;
             }
 
-            const target = `${routerOrigin}/index.html?username=${encodeURIComponent(creds.username)}&password=${encodeURIComponent(creds.password)}`;
+            // إذا كان الباركود يحتوي على رابط مباشر للراوتر، يتم فتحه كما هو تماماً مثل كاميرا الهاتف
+            let target = "";
+            if (creds.isDirectUrl && creds.directUrl) {
+                target = creds.directUrl;
+            } else {
+                // إذا كان كوداً مشفراً أو نصياً، يتم توجيهه إلى مسار /login المباشر للراوتر
+                target = `${routerOrigin}/login?username=${encodeURIComponent(creds.username)}&password=${encodeURIComponent(creds.password)}`;
+            }
 
             statusEl.innerHTML = `
                 <div style="padding:6px 4px;">
@@ -772,7 +810,7 @@
 
             setTimeout(() => {
                 window.location.href = target;
-            }, 500);
+            }, 350);
         }
 
         let html5QrCode = null;
@@ -1012,4 +1050,4 @@
         });
     </script>
 </body>
-</html>
+</html>`
